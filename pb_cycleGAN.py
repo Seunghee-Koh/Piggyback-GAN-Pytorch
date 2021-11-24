@@ -173,7 +173,7 @@ def main(opt : DictConfig):
     os.chdir(hydra.utils.get_original_cwd()) 
 
     # opt = CycleGANOptions()
-    tasks = ['./datasets/cityscapes', './datasets/maps', './datasets/facades', './datasets/vangogh2photo']
+    tasks = ['cityscapes', 'maps', 'facades', 'vangogh2photo']
     torch.manual_seed(0)
     np.random.seed(0)
     torch.cuda.manual_seed(0)
@@ -193,7 +193,7 @@ def main(opt : DictConfig):
             
             # Create Task folder 
 
-            opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx][41:]+"_"+"cycleGAN"
+            opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx]+"_"+"cycleGAN"
             opt.image_folder_name = "Intermediate_train_images"
             if not os.path.exists(os.path.join(opt.checkpoints_dir, opt.task_folder_name, opt.image_folder_name)):
                 os.makedirs(os.path.join(opt.checkpoints_dir, opt.task_folder_name, opt.image_folder_name))
@@ -207,7 +207,7 @@ def main(opt : DictConfig):
                 weights_A = []
                 weights_B = []
             else:
-                old_task_folder_name = "Task_"+str(task_idx)+"_"+tasks[task_idx-1][41:]+"_"+"cycleGAN"
+                old_task_folder_name = "Task_"+str(task_idx)+"_"+tasks[task_idx-1]+"_"+"cycleGAN"
                 print("Loading ", os.path.join(opt.checkpoints_dir, old_task_folder_name)+'/filters.pt')
                 filters = torch.load(os.path.join(opt.checkpoints_dir, old_task_folder_name)+'/filters.pt')
                 netG_A_filter_list = filters["netG_A_filter_list"]
@@ -220,7 +220,7 @@ def main(opt : DictConfig):
             opt.weights_A = weights_A
             opt.weights_B = weights_B
 
-            opt.dataroot = tasks[task_idx]
+            opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
             opt.task_num = task_idx+1        
 
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))            
@@ -235,7 +235,7 @@ def main(opt : DictConfig):
         print("In Testing mode")
         start_task = 0
         end_task = len(tasks)
-        load_filter_path = opt.checkpoints_dir+f"/Task_{len(tasks)}_{tasks[-1][41:]}_cycleGAN/filters.pt"
+        load_filter_path = opt.checkpoints_dir+f"/Task_{len(tasks)}_{tasks[-1]}_cycleGAN/filters.pt"
         opt.load_filter_path = load_filter_path
 
         filters = torch.load(opt.load_filter_path)
@@ -248,12 +248,12 @@ def main(opt : DictConfig):
         for task_idx in range(start_task, end_task):
             print(f"Task {task_idx+1}")
 
-            opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx][41:]+"_"+"cycleGAN"
+            opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx]+"_"+"cycleGAN"
             opt.img_save_path = os.path.join(opt.checkpoints_dir, opt.task_folder_name, opt.image_folder_name)
             if not os.path.exists(os.path.join(opt.checkpoints_dir, opt.task_folder_name, opt.image_folder_name)):
                     os.makedirs(os.path.join(opt.checkpoints_dir, opt.task_folder_name, opt.image_folder_name))
 
-            opt.dataroot = tasks[task_idx]
+            opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
             opt.task_num = task_idx+1
             test(opt, task_idx)
 
