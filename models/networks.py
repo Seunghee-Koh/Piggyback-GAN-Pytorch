@@ -7,6 +7,7 @@ from torch.optim import lr_scheduler
 import torch.nn.functional as F
 import copy
 import math
+import pdb
 
 ###############################################################################
 # Helper Functions
@@ -339,6 +340,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6)
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+        # net = Unet_modified(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     else:
@@ -661,7 +663,7 @@ class UnetGenerator(nn.Module):
         # gradually reduce the number of filters from ngf * 8 to ngf
         unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
         unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        unet_block = UnetSkipConnectionBlock(ngf * 1, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
         self.model = UnetSkipConnectionBlock(output_nc, ngf, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
 
     def forward(self, input):
@@ -817,3 +819,82 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.net(input)
+
+
+class Unet_modified(nn.Module):
+    """Create a Unet-based generator"""
+
+    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+        """Construct a Unet generator
+        Parameters:
+            input_nc (int)  -- the number of channels in input images
+            output_nc (int) -- the number of channels in output images
+            num_downs (int) -- the number of downsamplings in UNet. For example, # if |num_downs| == 7,
+                                image of size 128x128 will become of size 1x1 # at the bottleneck
+            ngf (int)       -- the number of filters in the last conv layer
+            norm_layer      -- normalization layer
+
+        We construct the U-Net from the innermost layer to the outermost layer.
+        It is a recursive process.
+        """
+        super(Unet_modified, self).__init__()
+
+        def down_conv(in_channels, out_channels, inner_most = False):
+            conv= [
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=True)
+            ]
+            if not inner_most:
+                conv.append(nn.InstanceNorm2d(out_channels))
+            
+            return nn.Sequential(*conv)
+        def up_conv(in_channels, out_channels, inner_most = False):
+            factor = 1 if inner_most else 2
+            conv = nn.Sequential(
+                nn.ReLU(True),
+                nn.ConvTranspose2d(in_channels * factor, out_channels, kernel_size=4, stride=2, padding=1, bias=True),
+                nn.InstanceNorm2d(out_channels)
+            )
+            return conv
+
+
+        self.inc = nn.Conv2d(input_nc, ngf, kernel_size=4, stride=2, padding=1, bias=True)
+        self.down1 = down_conv(ngf * 1, ngf * 2)
+        self.down2 = down_conv(ngf * 2, ngf * 4)
+        self.down3 = down_conv(ngf * 4, ngf * 8)
+        self.down4 = down_conv(ngf * 8, ngf * 8)
+        self.down5 = down_conv(ngf * 8, ngf * 8)
+
+        self.inner_down = down_conv(ngf * 8, ngf * 8, inner_most=True)
+        self.inner_up = up_conv(ngf * 8, ngf * 8, inner_most=True)
+
+        self.up5 = up_conv(ngf * 8, ngf * 8)
+        self.up4 = up_conv(ngf * 8, ngf * 8)
+        self.up3 = up_conv(ngf * 8, ngf * 4)
+        self.up2 = up_conv(ngf * 4, ngf * 2)
+        self.up1 = up_conv(ngf * 2, ngf * 1)
+        self.outc = nn.Sequential(
+            nn.ReLU(True),
+            nn.ConvTranspose2d(ngf * 2, output_nc, kernel_size=4, stride=2, padding=1, bias=True),
+            nn.InstanceNorm2d(output_nc)
+        )
+
+    def forward(self, input):
+        """Standard forward"""
+        x1 = self.inc(input) # out c = ngf
+        x2 = self.down1(x1) # out c = ngf * 2
+        x3 = self.down2(x2) # out c = ngf * 4
+        x4 = self.down3(x3) # out c = ngf * 8
+        x5 = self.down4(x4) # out c = ngf * 8
+        x6 = self.down5(x5) #out  c = ngf * 8
+
+        x = self.inner_down(x6)
+        x = self.inner_up(x)
+
+        x = self.up5(torch.cat([x, x6], dim=1)) # in c = ngf * 8
+        x = self.up4(torch.cat([x, x5], dim=1)) # in c = ngf * 8
+        x = self.up3(torch.cat([x, x4], dim=1)) # in c = ngf * 8
+        x = self.up2(torch.cat([x, x3], dim=1)) # in c = ngf * 4
+        x = self.up1(torch.cat([x, x2], dim=1)) # in c = ngf * 2
+        output = self.outc(torch.cat([x, x1], dim=1)) # in c = ngf
+        return output

@@ -5,6 +5,7 @@ from models import networks
 import itertools
 from utils.utils import ImageBuffer
 from utils.utils import save_image, tensor2im
+from torchvision.utils import make_grid
 # %%
 class CycleGAN(nn.Module):
     def __init__(self, opt, device):
@@ -52,12 +53,19 @@ class CycleGAN(nn.Module):
                     param.requires_grad = requires_grad
 
     def save_train_images(self, epoch):
-        save_image(tensor2im(self.real_A), self.opt.img_save_path + f"/real_A_epoch_{epoch}.png")
-        save_image(tensor2im(self.real_B), self.opt.img_save_path + f"/real_B_epoch_{epoch}.png")
-        save_image(tensor2im(self.rec_A), self.opt.img_save_path + f"/rec_A_epoch_{epoch}.png")
-        save_image(tensor2im(self.rec_B), self.opt.img_save_path + f"/rec_B_epoch_{epoch}.png")
-        save_image(tensor2im(self.idt_A), self.opt.img_save_path + f"/idt_A_epoch_{epoch}.png")
-        save_image(tensor2im(self.idt_B), self.opt.img_save_path + f"/idt_B_epoch_{epoch}.png")
+        # save_image(tensor2im(self.real_A), self.opt.img_save_path + f"/real_A_epoch_{epoch}.png")
+        # save_image(tensor2im(self.real_B), self.opt.img_save_path + f"/real_B_epoch_{epoch}.png")
+        # save_image(tensor2im(self.rec_A), self.opt.img_save_path + f"/rec_A_epoch_{epoch}.png")
+        # save_image(tensor2im(self.rec_B), self.opt.img_save_path + f"/rec_B_epoch_{epoch}.png")
+        # save_image(tensor2im(self.idt_A), self.opt.img_save_path + f"/idt_A_epoch_{epoch}.png")
+        # save_image(tensor2im(self.idt_B), self.opt.img_save_path + f"/idt_B_epoch_{epoch}.png")
+
+        # save image gird
+        grid = make_grid(
+            torch.cat([self.real_A, self.fake_B, self.rec_A, self.idt_B, 
+                        self.real_B, self.fake_A, self.rec_B, self.idt_A], dim=0), 
+                        nrow=self.opt.batch_size)
+        save_image(tensor2im(grid.unsqueeze(0)), self.opt.img_save_path + f"/output_gird_epoch_{epoch}.png")
 
     def save_test_images(self, idx):
         save_image(tensor2im(self.real_A), self.opt.img_save_path + f"/img_{idx:04d}_real_A.png")
@@ -66,7 +74,6 @@ class CycleGAN(nn.Module):
         save_image(tensor2im(self.real_B), self.opt.img_save_path + f"/img_{idx:04d}_real_B.png")
         save_image(tensor2im(self.rec_B), self.opt.img_save_path + f"/img_{idx:04d}_rec_B.png")
         save_image(tensor2im(self.fake_A), self.opt.img_save_path + f"/img_{idx:04d}_trans_B2A.png")
-
     
     def update_learning_rate(self):
         

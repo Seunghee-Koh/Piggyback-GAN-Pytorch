@@ -5,13 +5,14 @@ checkpoints_dir: "./checkpoints"
 train: False
 nodes: 1
 gpu_ids: [0,1,2,3]
+# gpu_ids: [0]
 nr: 0 # ranking within nodes
 
 # model and arch
 ngf: 64
 ndf: 64
 netD: "basic" # [basic | n_layers | pixel]
-netG: "resnet_9blocks" # [resnet_9blocks | resnet_6blocks | unet_256 | unet_128]
+netG: "resnet_6blocks" # [resnet_9blocks | resnet_6blocks | unet_256 | unet_128]
 norm: "instance" # [instance | batch | none]
 init_type: "normal" # [normal | xavier | kaiming | orthogonal]
 init_gain: 0.02 # scaling factor for normal, xavier and orthogonal.
@@ -22,8 +23,10 @@ lambda_A: 10.0
 lambda_B: 10.0
 lambda_identity: 0.5
 start_epoch: 1
-n_epochs: 100
-n_epochs_decay: 100
+# n_epochs: 100
+# n_epochs_decay: 100
+n_epochs: 1
+n_epochs_decay: 0
 beta1: 0.5
 lr: 0.0002
 lr_policy: "linear"

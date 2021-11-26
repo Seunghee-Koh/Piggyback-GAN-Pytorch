@@ -13,9 +13,9 @@ import time
 from models.networks import PiggybackConv, PiggybackTransposeConv, load_pb_conv
 import copy 
 import sys
+from pytorch_model_summary import summary as summary_
 
-import hydra
-from omegaconf import DictConfig, OmegaConf
+import pdb
 
 # %%
 def train(gpu, opt):
@@ -165,20 +165,14 @@ def test(opt, task_idx):
 
 # %%
 
-# if __name__ == '__main__':
+def main():
 
-@hydra.main(config_path="configs", config_name="config")
-def main(opt : DictConfig):
-    
-    os.chdir(hydra.utils.get_original_cwd()) 
-
-    # opt = CycleGANOptions()
-    tasks = ['cityscapes', 'maps', 'facades', 'vangogh2photo']
+    opt = CycleGANOptions()
+    tasks = ['cityscapes', 'maps', 'facades']
     torch.manual_seed(0)
     np.random.seed(0)
     torch.cuda.manual_seed(0)
     torch.cuda.manual_seed_all(0)
-    OmegaConf.set_struct(opt, False)
 
     if opt.train:
         
@@ -192,7 +186,6 @@ def main(opt : DictConfig):
         for task_idx in range(start_task, end_task): 
             
             # Create Task folder 
-
             opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx]+"_"+"cycleGAN"
             opt.image_folder_name = "Intermediate_train_images"
             if not os.path.exists(os.path.join(opt.checkpoints_dir, opt.task_folder_name, opt.image_folder_name)):
@@ -215,13 +208,22 @@ def main(opt : DictConfig):
                 weights_A = filters["weights_A"]
                 weights_B = filters["weights_B"]
 
+            
             opt.netG_A_filter_list = netG_A_filter_list
             opt.netG_B_filter_list = netG_B_filter_list
             opt.weights_A = weights_A
             opt.weights_B = weights_B
 
             opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
-            opt.task_num = task_idx+1        
+            opt.task_num = task_idx+1   
+
+            # from models.networks import define_G
+            # from torchsummary import summary
+            # device='cuda:0'
+            # netG = define_G(3,3,64,'unet_128','instance',False,'normal',0.02,1,[])
+            # netG.to(device)
+            # for layer in list(netG):
+            #     pdb.set_trace()
 
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))            
 
