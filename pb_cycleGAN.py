@@ -10,7 +10,7 @@ import torch.utils
 import os
 from models.cycleGAN import CycleGAN
 import time
-from models.networks import PiggybackConv, PiggybackTransposeConv, load_pb_conv
+from models.networks import PiggybackConv, PiggybackTransposeConv, load_pb_conv, make_filter_list
 import copy 
 import sys
 from pytorch_model_summary import summary as summary_
@@ -31,8 +31,14 @@ def train(gpu, opt):
             rank=rank                                               
         )           
         model = CycleGAN(opt, device)
-        model = model.to(device) 
+        model = model.to(device)
+ 
         model = nn.parallel.DistributedDataParallel(model, device_ids=[rank], output_device=rank)
+        if opt.train_continue:
+            state_dict = torch.load(opt.ckpt_save_path+'/latest_checkpoint.pt')  
+            model.load_state_dict(state_dict['model'])
+            opt.start_epoch = state_dict['epoch']
+            opt.train_continue = False # to prevent load check point in another task
         train_dataset = UnalignedDataset(opt)
         train_sampler = torch.utils.data.distributed.DistributedSampler(
             train_dataset,
@@ -64,7 +70,7 @@ def train(gpu, opt):
                 )
 
                 print(print_str)
-                
+
 
         model.module.update_learning_rate()  
 
@@ -77,40 +83,10 @@ def train(gpu, opt):
         dist.barrier()
 
     if gpu <= 0:
-
-        netG_A_layer_list = list(model.module.netG_A)
-        netG_B_layer_list = list(model.module.netG_B)
-
-        conv_A_idx = 0
-        for layer in netG_A_layer_list:
-            if isinstance(layer, PiggybackConv) or isinstance(layer, PiggybackTransposeConv):
-                layer.unc_filt.requires_grad = False
-                if opt.task_num == 1:
-                    opt.netG_A_filter_list.append([layer.unc_filt.detach().cpu()])
-                elif opt.task_num == 2:
-                    opt.netG_A_filter_list[conv_A_idx].append(layer.unc_filt.detach().cpu())
-                    opt.weights_A.append([layer.weights_mat.detach().cpu()])
-                    conv_A_idx += 1
-                else:
-                    opt.netG_A_filter_list[conv_A_idx].append(layer.unc_filt.detach().cpu())
-                    opt.weights_A[conv_A_idx].append(layer.weights_mat.detach().cpu())
-                    conv_A_idx += 1
-                    
-                
-        conv_B_idx = 0
-        for layer in netG_B_layer_list:
-            if isinstance(layer, PiggybackConv) or isinstance(layer, PiggybackTransposeConv):
-                layer.unc_filt.requires_grad = False
-                if opt.task_num == 1:
-                    opt.netG_B_filter_list.append([layer.unc_filt.detach().cpu()])
-                elif opt.task_num == 2:
-                    opt.netG_B_filter_list[conv_B_idx].append(layer.unc_filt.detach().cpu())
-                    opt.weights_B.append([layer.weights_mat.detach().cpu()])
-                    conv_B_idx += 1
-                else:
-                    opt.netG_B_filter_list[conv_B_idx].append(layer.unc_filt.detach().cpu())
-                    opt.weights_B[conv_B_idx].append(layer.weights_mat.detach().cpu())
-                    conv_B_idx += 1
+                   
+        """
+        make_filter_list(model.module.netG_A, opt.netG_A_filter_list, opt.weights_A, opt.task_num)
+        make_filter_list(model.module.netG_B, opt.netG_B_filter_list, opt.weights_B, opt.task_num)
 
         savedict_task = {'netG_A_filter_list':opt.netG_A_filter_list, 
                             'netG_B_filter_list':opt.netG_B_filter_list,
@@ -120,12 +96,13 @@ def train(gpu, opt):
 
         torch.save(savedict_task, opt.ckpt_save_path+'/filters.pt')
 
-        del netG_A_layer_list
-        del netG_B_layer_list
+        # del netG_A_layer_list
+        # del netG_B_layer_list
         del opt.netG_A_filter_list
         del opt.netG_B_filter_list
         del opt.weights_A
         del opt.weights_B
+        """
     
     dist.barrier()
     del model
@@ -137,7 +114,8 @@ def train(gpu, opt):
 def test(opt, task_idx):
 
     opt.train = False
-    device = torch.device('cpu')
+    # device = torch.device('cpu')
+    device = torch.device('cuda:{}'.format(gpu)) if gpu>=0 else torch.device('cpu')
     model = CycleGAN(opt, device)
     model = model.to(device) 
     model.eval()
@@ -153,7 +131,7 @@ def test(opt, task_idx):
     model.netG_B = load_pb_conv(model.netG_B, opt.netG_B_filter_list, opt.weights_B, task_idx)
 
     for i, data in enumerate(test_loader):
-        model.set_input(data)   
+        model.set_input(data)
         model.forward()
         model.save_test_images(i)
         print(f"Task {opt.task_num} : Image {i}")
@@ -161,14 +139,19 @@ def test(opt, task_idx):
             break
 
     del model
-      
-
+    image_path_list = opt.img_save_path
+    image_real = 'real_A'
+    image_fake = 'rec_A'
+    fid_value = calculate_fid_given_paths(image_path_list, [image_real, image_fake],
+                                                            50,
+                                                            True,
+                                                            2048)
 # %%
 
 def main():
 
-    opt = CycleGANOptions()
-    tasks = ['cityscapes', 'maps', 'facades']
+    opt = CycleGANOptions().parse()
+    tasks = ['cityscapes', 'maps', 'facades', 'vangogh2photo']
     torch.manual_seed(0)
     np.random.seed(0)
     torch.cuda.manual_seed(0)
@@ -176,15 +159,14 @@ def main():
 
     if opt.train:
         
-        start_task = 0
+        start_task = opt.st_task_idx
         end_task = len(tasks)
 
         opt.world_size = len(opt.gpu_ids) * opt.nodes                
-        os.environ['MASTER_ADDR'] = 'localhost'              
+        os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '8888'  
 
         for task_idx in range(start_task, end_task): 
-            
             # Create Task folder 
             opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx]+"_"+"cycleGAN"
             opt.image_folder_name = "Intermediate_train_images"
@@ -208,24 +190,51 @@ def main():
                 weights_A = filters["weights_A"]
                 weights_B = filters["weights_B"]
 
-            
             opt.netG_A_filter_list = netG_A_filter_list
             opt.netG_B_filter_list = netG_B_filter_list
             opt.weights_A = weights_A
             opt.weights_B = weights_B
 
             opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
-            opt.task_num = task_idx+1   
+            opt.task_num = task_idx+1  
 
-            # from models.networks import define_G
-            # from torchsummary import summary
-            # device='cuda:0'
-            # netG = define_G(3,3,64,'unet_128','instance',False,'normal',0.02,1,[])
-            # netG.to(device)
-            # for layer in list(netG):
+            # if task_idx == 1:
+            #     from models.networks import define_G
+            #     from torchsummary import summary
+            #     device='cuda:0'
+            #     netG = define_G(3,3,64,'resnet_6blocks','instance',False,'normal',0.02,2,opt.netG_A_filter_list)
+            #     netG.to(device)
+
+            #     class Idx():
+            #         def __init__(self):
+            #             self.idx = 0
+            #         def plus(self):
+            #             self.idx += 1
+
+            #     def make_filter(network, filters, weights, task_num, conv_idx):
+            #         if isinstance(network, PiggybackConv) or isinstance(network, PiggybackTransposeConv):
+            #             network.unc_filt.requires_grad = False
+            #             if task_num == 1:
+            #                 filters.append([network.unc_filt.detach().cpu()])
+            #             elif task_num == 2:
+            #                 filters[conv_idx.idx].append(network.unc_filt.detach().cpu())
+            #                 weights.append([network.weights_mat.detach().cpu()])
+            #                 conv_idx.plus()
+            #                 #print(f"conv_idx inside function: {conv_idx}")
+            #             else:
+            #                 filters[task_num-1][conv_idx.idx].append(network.unc_filt.detach().cpu())
+            #                 weights[task_num-1][conv_idx.idx].append(network.weights_mat.detach().cpu())
+            #                 conv_idx.plus()
+            #         print(f"conv_idx inter function: {conv_idx.idx}")
+
+            #         for name, child in network.named_children():
+            #             print(f"conv_idx outside function: {conv_idx.idx}")
+            #             make_filter(child, filters, weights, task_num, conv_idx)
+            #     idx = Idx()
             #     pdb.set_trace()
-
-            mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))            
+            #     make_filter_list(netG, opt.netG_A_filter_list, opt.weights_A, opt.task_num)
+            #     pdb.set_trace()
+            mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))
 
     else:
         '''

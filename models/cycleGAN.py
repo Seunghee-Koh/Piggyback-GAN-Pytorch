@@ -77,10 +77,10 @@ class CycleGAN(nn.Module):
 
         # save image gird
         grid = make_grid(
-            torch.cat([self.real_A, self.fake_B, self.rec_A, self.idt_B,
-                        self.real_B, self.fake_A, self.rec_B, self.idt_A], dim=0),
+            torch.cat([self.real_A, self.fake_B, self.rec_A,
+                        self.real_B, self.fake_A, self.rec_B], dim=0),
                         nrow=1)
-        save_image(tensor2im(grid.unsqueeze(0)), self.opt.img_save_path + f"/output_gird_epoch_{epoch:04d}.png")
+        save_image(tensor2im(grid.unsqueeze(0)), self.opt.img_save_path + f"/output_gird_epoch_{idx:04d}.png")
     
     def update_learning_rate(self):
         
