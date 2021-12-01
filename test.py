@@ -29,7 +29,6 @@ from utils.fid_score import calculate_fid_given_paths
 def main():
 #     start_task = 0
     opt = CycleGANOptions().parse()
-    # opt.save_opts()
     # tasks = ['cityscapes', 'maps', 'facades']
     # torch.manual_seed(0)
     # np.random.seed(0)
