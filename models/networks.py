@@ -114,7 +114,7 @@ class PiggybackConv(nn.Module):
             # after training, save unc_filt and weight_mat into files, so that u can use it now. 
             
             self.unc_filt = nn.Parameter(torch.Tensor(self.lamb_num, self.in_channels, self.kernel_size[0], self.kernel_size[1])) 
-            # self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
+            #self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
             self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=0))
             bank_c_out = self.concat_unc_filter.shape[0]
             self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
@@ -350,8 +350,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
 
     def convert_piggy_layer(module, task_num, filter_list):
-        # lambda_list = [0.25, 0.5, 0.125, 0.0625]
-        lambda_list = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+        lambda_list = [0.25, 0.5, 0.125, 0.0625, 0.125, 0.125]
+        # lambda_list = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
         module_output = module
         new_filter_list = filter_list
         if isinstance(module, nn.Conv2d) or isinstance(module, PiggybackConv):
