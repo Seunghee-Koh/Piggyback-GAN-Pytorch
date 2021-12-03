@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from models import networks, cycleGAN
 from dataloaders.dataloader import UnalignedDataset
+from torch.nn.functional import l1_loss
 
 # TODO: Enable two types of lambda : list(different by layer), float(constant for all filters)
 # 'lambdas' indicates lambdas in PiggybackConv, and PiggybackTransposeConv.
@@ -64,7 +65,6 @@ def get_task_lambda(opt, gpu, task_idx, max_lambda=1.0):
     opt.train=True # To call train dataset 
     device = torch.device('cuda:{}'.format(gpu)) if gpu>=0 else torch.device('cpu')
     model = cycleGAN.CycleGAN(opt, device)
-    print(opt.netG_A_filter_list)
 
     model = model.to(device)
     model.eval()
@@ -83,18 +83,14 @@ def get_task_lambda(opt, gpu, task_idx, max_lambda=1.0):
             model.set_input(data)
             model.forward()
             # Distance measure.. Cycleloss..
-            lambda_A = opt.lambda_A
-            lambda_B = opt.lambda_B
-            loss_cycle_A = model.criterionCycle(model.rec_A, model.real_A) * lambda_A
-            loss_cycle_B = model.criterionCycle(model.rec_B, model.real_B) * lambda_B
-            loss = loss_cycle_A + loss_cycle_B
+            loss = l1_loss(model.rec_A, model.real_A)
             total_loss = total_loss + loss.item()
             cnt = cnt + 1
-            if not i%20:
-                print(i, total_loss/cnt)
+            # if not i%20:
+            #     print(i, total_loss/cnt)
 
-    total_loss = total_loss / cnt
-    lambdas = round(total_loss *opt.ngf) * 1.0 / opt.ngf
+    avg_loss = total_loss / cnt
+    lambdas = round(avg_loss *opt.ngf) * 1.0 / opt.ngf
     return min(lambdas, max_lambda)
 
 
