@@ -351,7 +351,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
 
     def convert_piggy_layer(module, task_num, filter_list):
         # lambda_list = [0.25, 0.5, 0.125, 0.0625]
-        lambda_list = [0.25, 0.25, 0.25, 0.25]
+        lambda_list = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
         module_output = module
         new_filter_list = filter_list
         if isinstance(module, nn.Conv2d) or isinstance(module, PiggybackConv):
@@ -359,8 +359,6 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
                 unc_filt_list = None
             else:
                 unc_filt_list = filter_list.pop(0)
-                #unc_filt_list = filter_list[0]
-                #new_filter_list = filter_list[1:]
             module_output = PiggybackConv(in_channels=module.in_channels,
                                           out_channels=module.out_channels,
                                           kernel_size=module.kernel_size,
@@ -375,8 +373,6 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
                 unc_filt_list = None
             else:
                 unc_filt_list = filter_list.pop(0)
-                #unc_filt_list = filter_list[0]
-                #new_filter_list = filter_list[1:]
             module_output = PiggybackTransposeConv(in_channels=module.in_channels,
                                                    out_channels=module.out_channels,
                                                    kernel_size=module.kernel_size,
@@ -397,18 +393,6 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
     new_net = net
 
     
-    """
-    all_layers_netG = nn.ModuleList()
-    all_layers_netG = remove_sequential(net, all_layers_netG)
-    copy_all_layers_netG = copy.deepcopy(all_layers_netG)
-    replaced_netG = replace_conv(copy_all_layers_netG, task_num, filter_list)
-    new_net = nn.Sequential(*replaced_netG)
-
-    del replaced_netG
-    del copy_all_layers_netG
-    del all_layers_netG
-    del net
-    """
     init_weights(new_net, init_type, init_gain=init_gain)
 
     return new_net
