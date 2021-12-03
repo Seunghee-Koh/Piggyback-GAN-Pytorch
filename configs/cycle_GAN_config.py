@@ -54,6 +54,9 @@ class CycleGANOptions():
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{netG}_size{load_size}')
         self.initialize = True
 
+        #
+        parser.add_argument('-taskwise_lambda', action='store_true')
+
         return parser
 
     def gather_options(self):
