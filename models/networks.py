@@ -367,8 +367,6 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
                                           task=task_num,
                                           unc_filt_list=unc_filt_list
                                           )
-            if task_num>1:
-                print(module_output.weights_mat.shape[0])
         elif isinstance(module, nn.ConvTranspose2d) or isinstance(module, PiggybackTransposeConv):
             if task_num == 1:
                 unc_filt_list = None

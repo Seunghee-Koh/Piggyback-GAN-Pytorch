@@ -84,9 +84,9 @@ def train(gpu, opt):
 
     if gpu <= 0:
                    
-        """
         make_filter_list(model.module.netG_A, opt.netG_A_filter_list, opt.weights_A, opt.task_num)
         make_filter_list(model.module.netG_B, opt.netG_B_filter_list, opt.weights_B, opt.task_num)
+        # print(opt.netG_A_filter_list)
 
         savedict_task = {'netG_A_filter_list':opt.netG_A_filter_list, 
                             'netG_B_filter_list':opt.netG_B_filter_list,
@@ -102,7 +102,6 @@ def train(gpu, opt):
         del opt.netG_B_filter_list
         del opt.weights_A
         del opt.weights_B
-        """
     
     dist.barrier()
     del model
@@ -197,6 +196,20 @@ def main():
 
             opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
             opt.task_num = task_idx+1  
+
+
+            opt.task_lambda = 0.25
+            if opt.taskwise_lambda:
+                if opt.train_continue:
+                    state_dict = torch.load(opt.ckpt_save_path + '/latest_checkpoint.pt')
+                    opt.task_lambda = state_dict['task_lambda']
+                else:
+                    from models.lambda_calculators import get_task_lambda
+                    # task_lambdas = [0.125, 0.0625, 0.375, 0.5, 0.75, 0.375]
+                    # opt.task_lambda = task_lambdas[task_idx]
+                    opt.task_lambda = get_task_lambda(opt, 0, task_idx)
+                    print(f"Task{task_idx}: lambda {opt.task_lambda}")
+
 
             # if task_idx == 1:
             #     from models.networks import define_G
