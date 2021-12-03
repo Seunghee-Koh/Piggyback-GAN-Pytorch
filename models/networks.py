@@ -114,10 +114,10 @@ class PiggybackConv(nn.Module):
             # after training, save unc_filt and weight_mat into files, so that u can use it now. 
             
             self.unc_filt = nn.Parameter(torch.Tensor(self.lamb_num, self.in_channels, self.kernel_size[0], self.kernel_size[1])) 
-            self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
+            # self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
             self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=0))
-            #bank_c_out = self.concat_unc_filter.shape[0]
-            #self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
+            bank_c_out = self.concat_unc_filter.shape[0]
+            self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
 
     def forward(self, input_x):
         if self.task_num == 1:
@@ -156,11 +156,11 @@ class PiggybackTransposeConv(nn.Module):
             self.unc_filt = nn.Parameter(torch.Tensor(self.in_channels, self.out_channels, self.kernel_size[0], self.kernel_size[1]))
         else: 
             self.unc_filt = nn.Parameter(torch.Tensor(self.in_channels, self.lamb_num, self.kernel_size[0], self.kernel_size[1])) 
-            self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
+            #self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
             self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=1))
             # bank_c_out
-            #bank_c_out = self.concat_unc_filter.shape[1]
-            #self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
+            bank_c_out = self.concat_unc_filter.shape[1]
+            self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
 
     def forward(self, input_x):
         if self.task_num == 1:
