@@ -79,61 +79,6 @@ def make_filter_list(network, filters, weights, task_num, conv_idx=None):
     for name, child in network.named_children():
         make_filter_list(child, filters, weights, task_num, conv_idx)
 
-def remove_sequential(network, layer_list):
-
-    for layer in network.children():
-        if list(layer.children()) == []: # if leaf node, add it to list
-            layer_list.append(layer)
-        else:
-            layer_list = remove_sequential(layer, layer_list)
-
-    return layer_list
-
-def replace_conv(layer_list, task_idx=1, filter_list=None):
-
-    conv_idx = 0
-
-    for layer_idx in range(len(layer_list)):
-
-        if isinstance(layer_list[layer_idx], nn.Conv2d) or isinstance(layer_list[layer_idx], PiggybackConv):
-            el = layer_list[layer_idx]
-            del layer_list[layer_idx]
-
-            if task_idx == 1:
-                unc_filter_list = None
-            else:
-                unc_filter_list = filter_list[conv_idx]
-                conv_idx += 1
-
-            conv_layer = PiggybackConv(in_channels=el.in_channels, out_channels=el.out_channels, kernel_size=el.kernel_size, stride=el.stride, padding=el.padding, task=task_idx, unc_filt_list=unc_filter_list)
-            # conv_layer = nn.Conv2d(in_channels=el.in_channels, out_channels=el.out_channels, kernel_size=el.kernel_size, stride=el.stride, padding=el.padding)
-            layer_list.insert(layer_idx, conv_layer)
-
-            del el
-            del conv_layer
-
-            continue
-
-        if isinstance(layer_list[layer_idx], nn.ConvTranspose2d) or isinstance(layer_list[layer_idx], PiggybackTransposeConv):
-            el = layer_list[layer_idx]
-            del layer_list[layer_idx]
-
-            if task_idx == 1:
-                unc_filter_list = None
-            else:
-                unc_filter_list = filter_list[conv_idx]
-                conv_idx += 1
-
-            conv_layer = PiggybackTransposeConv(in_channels=el.in_channels, out_channels=el.out_channels, kernel_size=el.kernel_size, stride=el.stride, padding=el.padding, output_padding=el.output_padding, task=task_idx, unc_filt_list=unc_filter_list)
-            # conv_layer = nn.ConvTranspose2d(in_channels=el.in_channels, out_channels=el.out_channels, kernel_size=el.kernel_size, stride=el.stride, padding=el.padding, output_padding=el.output_padding)
-            layer_list.insert(layer_idx, conv_layer)
-
-            del el
-            del conv_layer
-
-            continue
-
-    return layer_list
 # %%
 class Idx():
     def __init__(self):
@@ -171,12 +116,16 @@ class PiggybackConv(nn.Module):
             self.unc_filt = nn.Parameter(torch.Tensor(self.lamb_num, self.in_channels, self.kernel_size[0], self.kernel_size[1])) 
             self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
             self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=0))
+            #bank_c_out = self.concat_unc_filter.shape[0]
+            #self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
 
     def forward(self, input_x):
         if self.task_num == 1:
             return F.conv2d(input_x, self.unc_filt, bias=self.bias, stride=self.stride, padding=self.padding)           
         else:
             self.reshape_unc = torch.reshape(self.concat_unc_filter, (self.concat_unc_filter.shape[1]*self.concat_unc_filter.shape[2]*self.concat_unc_filter.shape[3], self.concat_unc_filter.shape[0]))
+            # self.reshape_unc = self.concat_unc_filter.reshape(self.concat_unc_filter.shape[0], -1)
+            # TODO: Change reshape_unc into it?
             self.reshape_unc_mul_w = torch.matmul(self.reshape_unc, self.weights_mat)
             self.pb_filt = torch.reshape(self.reshape_unc_mul_w, (self.reshape_unc_mul_w.shape[1], self.concat_unc_filter.shape[1], self.concat_unc_filter.shape[2], self.concat_unc_filter.shape[3]))
             self.final_weight_mat = torch.cat((self.unc_filt, self.pb_filt),dim=0)
@@ -209,6 +158,9 @@ class PiggybackTransposeConv(nn.Module):
             self.unc_filt = nn.Parameter(torch.Tensor(self.in_channels, self.lamb_num, self.kernel_size[0], self.kernel_size[1])) 
             self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
             self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=1))
+            # bank_c_out
+            #bank_c_out = self.concat_unc_filter.shape[1]
+            #self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
 
     def forward(self, input_x):
         if self.task_num == 1:
@@ -216,6 +168,8 @@ class PiggybackTransposeConv(nn.Module):
             
         else:
             self.reshape_unc = torch.reshape(self.concat_unc_filter, (self.concat_unc_filter.shape[0]*self.concat_unc_filter.shape[2]*self.concat_unc_filter.shape[3], self.concat_unc_filter.shape[1]))
+            # self.reshape_unc = self.concat_unc_filter.transpose(0,1).reshape(self.concat_unc_filter.shape[0],-1).transpose()
+            # TODO: Change reshape unc into it??
             self.reshape_unc_mul_w = torch.matmul(self.reshape_unc, self.weights_mat)
             self.pb_filt = torch.reshape(self.reshape_unc_mul_w, (self.concat_unc_filter.shape[0], self.reshape_unc_mul_w.shape[1], self.concat_unc_filter.shape[2], self.concat_unc_filter.shape[3]))
             self.final_weight_mat = torch.cat((self.unc_filt, self.pb_filt),dim=1)
@@ -396,17 +350,23 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
 
     def convert_piggy_layer(module, task_num, filter_list):
+        # lambda_list = [0.25, 0.5, 0.125, 0.0625]
+        lambda_list = [0.25, 0.25, 0.25, 0.25]
         module_output = module
+        new_filter_list = filter_list
         if isinstance(module, nn.Conv2d) or isinstance(module, PiggybackConv):
             if task_num == 1:
                 unc_filt_list = None
             else:
                 unc_filt_list = filter_list.pop(0)
+                #unc_filt_list = filter_list[0]
+                #new_filter_list = filter_list[1:]
             module_output = PiggybackConv(in_channels=module.in_channels,
                                           out_channels=module.out_channels,
                                           kernel_size=module.kernel_size,
                                           stride=module.stride,
                                           padding=module.padding,
+                                          lambdas=lambda_list[task_num],
                                           task=task_num,
                                           unc_filt_list=unc_filt_list
                                           )
@@ -415,22 +375,25 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
                 unc_filt_list = None
             else:
                 unc_filt_list = filter_list.pop(0)
+                #unc_filt_list = filter_list[0]
+                #new_filter_list = filter_list[1:]
             module_output = PiggybackTransposeConv(in_channels=module.in_channels,
                                                    out_channels=module.out_channels,
                                                    kernel_size=module.kernel_size,
                                                    stride=module.stride,
                                                    padding=module.padding,
                                                    output_padding=module.output_padding,
+                                                   lambdas=lambda_list[task_num],
                                                    task=task_num,
                                                    unc_filt_list=unc_filt_list)
         for name, child in module.named_children():
             module_output.add_module(
-                    name, convert_piggy_layer(child, task_num,filter_list))
+                    name, convert_piggy_layer(child, task_num, new_filter_list))
         del module
         return module_output
 
-    # filt_list = copy.deepcopy(filter_list)
-    # new_net = convert_piggy_layer(net, task_num, filt_list)
+    filt_list = copy.deepcopy(filter_list)
+    new_net = convert_piggy_layer(net, task_num, filt_list)
     new_net = net
 
     
