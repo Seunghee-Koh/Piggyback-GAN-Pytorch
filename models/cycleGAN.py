@@ -15,9 +15,9 @@ class CycleGAN(nn.Module):
         self.opt = opt
 
         self.netG_A = networks.define_G(self.opt.input_nc, self.opt.output_nc, self.opt.ngf, self.opt.netG, self.opt.norm,
-                                        self.opt.dropout, self.opt.init_type, self.opt.init_gain, self.opt.task_num, self.opt.netG_A_filter_list)
+                                        self.opt.dropout, self.opt.init_type, self.opt.init_gain, self.opt.task_num, self.opt.netG_A_filter_list, self.opt.task_lambda)
         self.netG_B = networks.define_G(self.opt.input_nc, self.opt.output_nc, self.opt.ngf, self.opt.netG, self.opt.norm,
-                                        self.opt.dropout, self.opt.init_type, self.opt.init_gain, self.opt.task_num, self.opt.netG_B_filter_list)
+                                        self.opt.dropout, self.opt.init_type, self.opt.init_gain, self.opt.task_num, self.opt.netG_B_filter_list, self.opt.task_lambda)
 
         if opt.train:
             self.netD_A = networks.define_D(self.opt.input_nc, self.opt.ndf, self.opt.netD, self.opt.norm, self.opt.init_type, self.opt.init_gain)

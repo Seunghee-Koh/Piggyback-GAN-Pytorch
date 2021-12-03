@@ -119,6 +119,7 @@ class PiggybackConv(nn.Module):
             bank_c_out = self.concat_unc_filter.shape[0]
             self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
 
+
     def forward(self, input_x):
         if self.task_num == 1:
             return F.conv2d(input_x, self.unc_filt, bias=self.bias, stride=self.stride, padding=self.padding)           
@@ -307,7 +308,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False, init_type='normal', init_gain=0.02, task_num=1, filter_list=[]):
+def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False, init_type='normal', init_gain=0.02, task_num=1, filter_list=[], lambdas=0.25):
     """Create a generator
 
     Parameters:
@@ -349,9 +350,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
 
-    def convert_piggy_layer(module, task_num, filter_list):
-        lambda_list = [0.25, 0.5, 0.125, 0.0625, 0.125, 0.125]
-        # lambda_list = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+    def convert_piggy_layer(module, task_num, filter_list, lambdas=0.25):
         module_output = module
         new_filter_list = filter_list
         if isinstance(module, nn.Conv2d) or isinstance(module, PiggybackConv):
@@ -364,10 +363,12 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
                                           kernel_size=module.kernel_size,
                                           stride=module.stride,
                                           padding=module.padding,
-                                          lambdas=lambda_list[task_num],
+                                          lambdas=lambdas,
                                           task=task_num,
                                           unc_filt_list=unc_filt_list
                                           )
+            if task_num>1:
+                print(module_output.weights_mat.shape[0])
         elif isinstance(module, nn.ConvTranspose2d) or isinstance(module, PiggybackTransposeConv):
             if task_num == 1:
                 unc_filt_list = None
@@ -379,17 +380,18 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
                                                    stride=module.stride,
                                                    padding=module.padding,
                                                    output_padding=module.output_padding,
-                                                   lambdas=lambda_list[task_num],
+                                                   lambdas=lambdas,
                                                    task=task_num,
                                                    unc_filt_list=unc_filt_list)
         for name, child in module.named_children():
             module_output.add_module(
-                    name, convert_piggy_layer(child, task_num, new_filter_list))
+                    name, convert_piggy_layer(child, task_num, new_filter_list, lambdas))
         del module
         return module_output
 
     filt_list = copy.deepcopy(filter_list)
-    new_net = convert_piggy_layer(net, task_num, filt_list)
+    # print(f"Input of convert piggy layer : {lambdas}")
+    new_net = convert_piggy_layer(net, task_num, filt_list, lambdas)
     new_net = net
 
     
