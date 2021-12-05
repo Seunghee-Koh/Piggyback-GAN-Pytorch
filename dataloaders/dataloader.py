@@ -11,6 +11,62 @@ IMG_EXTENSIONS = [
     '.tif', '.TIF', '.tiff', '.TIFF',
 ]
 
+class AlignedDataset(Dataset):
+    def __init__(self, opt):
+        super(UnalignedDataset, self).__init__()
+        '''
+        data_path  -  path to dataset folder containing folders trainA, trainB, testA, testB
+        '''
+        if opt.train: 
+            self.dir_AB = os.path.join(opt.dataroot, "train")  # create a path '/path/to/data/train'
+        else:
+            self.dir_AB = os.path.join(opt.dataroot, "test")
+
+        self.AB_paths = sorted(make_dataset(self.dir_AB))   # load images from '/path/to/data/trainA'
+        self.AB_size = len(self.AB_paths)  # get the size of dataset A
+        
+        btoA = opt.direction == 'BtoA'
+        input_nc = opt.output_nc if btoA else opt.input_nc     
+        output_nc = opt.input_nc if btoA else opt.output_nc
+
+    def __getitem__(self, index):
+        """Return a data point and its metadata information.
+
+        Parameters:
+            index (int)      -- a random integer for data indexing
+
+        Returns a dictionary that contains A, B, A_paths and B_paths
+            A (tensor)       -- an image in the input domain
+            B (tensor)       -- its corresponding image in the target domain
+            A_paths (str)    -- image paths
+            B_paths (str)    -- image paths
+        """
+        # read a image given a random integer index
+        AB_path = self.AB_paths[index]
+        AB = Image.open(AB_path).convert('RGB')
+        # split AB image into A and B
+        w, h = AB.size
+        w2 = int(w / 2)
+        A = AB.crop((0, 0, w2, h))
+        B = AB.crop((w2, 0, w, h))
+
+        # apply the same transform to both A and B
+        transform_params = get_params(self.opt, A.size)
+        A_transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1))
+        B_transform = get_transform(self.opt, transform_params, grayscale=(self.output_nc == 1))
+
+        A = A_transform(A)
+        B = B_transform(B)
+
+        return {'A': A, 'B': B, 'A_paths': AB_path, 'B_paths': AB_path}
+
+    def __len__(self):
+        """Return the total number of images in the dataset.
+
+        As we have two datasets with potentially different number of images,
+        we take a maximum of
+        """
+        return len(self.AB_paths)
 
 class UnalignedDataset(Dataset):
     def __init__(self, opt):
