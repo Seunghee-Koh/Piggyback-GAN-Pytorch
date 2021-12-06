@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import copy
 import math
 import pdb
+from models import lambda_calculators
 
 ###############################################################################
 # Helper Functions
@@ -85,6 +86,44 @@ class Idx():
         self.idx = 0
     def plus(self):
         self.idx += 1
+
+
+def convert_piggy_layer(module, task_num, filter_list, lambdas=0.25):
+    module_output = module
+    if isinstance(module, nn.Conv2d) or isinstance(module, PiggybackConv):
+        if task_num == 1:
+            unc_filt_list = None
+        else:
+            unc_filt_list = filter_list.pop(0)
+        module_output = PiggybackConv(in_channels=module.in_channels,
+                                      out_channels=module.out_channels,
+                                      kernel_size=module.kernel_size,
+                                      stride=module.stride,
+                                      padding=module.padding,
+                                      lambdas=lambdas,
+                                      task=task_num,
+                                      unc_filt_list=unc_filt_list
+                                      )
+    elif isinstance(module, nn.ConvTranspose2d) or isinstance(module, PiggybackTransposeConv):
+        if task_num == 1:
+            unc_filt_list = None
+        else:
+            unc_filt_list = filter_list.pop(0)
+        module_output = PiggybackTransposeConv(in_channels=module.in_channels,
+                                               out_channels=module.out_channels,
+                                               kernel_size=module.kernel_size,
+                                               stride=module.stride,
+                                               padding=module.padding,
+                                               output_padding=module.output_padding,
+                                               lambdas=lambdas,
+                                               task=task_num,
+                                               unc_filt_list=unc_filt_list)
+    for name, child in module.named_children():
+        module_output.add_module(
+                name, convert_piggy_layer(child, task_num, filter_list, lambdas))
+    del module
+    return module_output
+
 
 class Identity(nn.Module):
     def forward(self, x):
@@ -350,46 +389,15 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
 
-    def convert_piggy_layer(module, task_num, filter_list, lambdas=0.25):
-        module_output = module
-        new_filter_list = filter_list
-        if isinstance(module, nn.Conv2d) or isinstance(module, PiggybackConv):
-            if task_num == 1:
-                unc_filt_list = None
-            else:
-                unc_filt_list = filter_list.pop(0)
-            module_output = PiggybackConv(in_channels=module.in_channels,
-                                          out_channels=module.out_channels,
-                                          kernel_size=module.kernel_size,
-                                          stride=module.stride,
-                                          padding=module.padding,
-                                          lambdas=lambdas,
-                                          task=task_num,
-                                          unc_filt_list=unc_filt_list
-                                          )
-        elif isinstance(module, nn.ConvTranspose2d) or isinstance(module, PiggybackTransposeConv):
-            if task_num == 1:
-                unc_filt_list = None
-            else:
-                unc_filt_list = filter_list.pop(0)
-            module_output = PiggybackTransposeConv(in_channels=module.in_channels,
-                                                   out_channels=module.out_channels,
-                                                   kernel_size=module.kernel_size,
-                                                   stride=module.stride,
-                                                   padding=module.padding,
-                                                   output_padding=module.output_padding,
-                                                   lambdas=lambdas,
-                                                   task=task_num,
-                                                   unc_filt_list=unc_filt_list)
-        for name, child in module.named_children():
-            module_output.add_module(
-                    name, convert_piggy_layer(child, task_num, new_filter_list, lambdas))
-        del module
-        return module_output
-
     filt_list = copy.deepcopy(filter_list)
-    # print(f"Input of convert piggy layer : {lambdas}")
-    new_net = convert_piggy_layer(net, task_num, filt_list, lambdas)
+
+    if isinstance(lambdas, list):
+        layer_lambda = copy.deepcopy(lambdas)
+        new_net = lambda_calculators.convert_piggy_layer_layerwise_lambda(net, task_num, filt_list, layer_lambda)
+
+    else:
+        #new_net = convert_piggy_layer(net, task_num, filt_list, lambdas)
+        new_net = lambda_calculators.convert_piggy_layer_layerwise_lambda(net, task_num, filt_list, lambdas)
     new_net = net
 
     

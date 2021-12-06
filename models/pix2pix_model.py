@@ -26,7 +26,7 @@ class Pix2PixModel(nn.Module):
             self.model_names = ['G']
         # define networks (both generator and discriminator)
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                      opt.dropout, opt.init_type, opt.init_gain, opt.task_num, opt.netG_filter_list, opt.task_lmabda)
+                                      opt.dropout, opt.init_type, opt.init_gain, opt.task_num, opt.netG_filter_list, opt.task_lambda)
 
         if self.train:  # define a discriminator; conditional GANs need to take both input and output images; Therefore, #channels for D is input_nc + output_nc
             self.netD = networks.define_D(self.opt.input_nc + opt.output_nc, self.opt.ndf, self.opt.netD, 

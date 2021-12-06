@@ -56,6 +56,7 @@ class Pix2PixGANOptions():
         self.initialize = True
 
         parser.add_argument('-taskwise_lambda', action='store_true')
+        parser.add_argument('-layerwise_lambda', action='store_true')
 
         return parser
 

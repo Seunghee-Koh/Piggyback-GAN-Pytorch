@@ -4,6 +4,7 @@ from PIL import Image
 import os
 import torchvision.transforms as transforms
 import random
+import numpy as np
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -13,10 +14,11 @@ IMG_EXTENSIONS = [
 
 class AlignedDataset(Dataset):
     def __init__(self, opt):
-        super(UnalignedDataset, self).__init__()
+        super(AlignedDataset, self).__init__()
         '''
         data_path  -  path to dataset folder containing folders trainA, trainB, testA, testB
         '''
+        self.opt = opt
         if opt.train: 
             self.dir_AB = os.path.join(opt.dataroot, "train")  # create a path '/path/to/data/train'
         else:
@@ -26,8 +28,8 @@ class AlignedDataset(Dataset):
         self.AB_size = len(self.AB_paths)  # get the size of dataset A
         
         btoA = opt.direction == 'BtoA'
-        input_nc = opt.output_nc if btoA else opt.input_nc     
-        output_nc = opt.input_nc if btoA else opt.output_nc
+        self.input_nc = opt.output_nc if btoA else opt.input_nc     
+        self.output_nc = opt.input_nc if btoA else opt.output_nc
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -127,6 +129,23 @@ class UnalignedDataset(Dataset):
         we take a maximum of
         """
         return max(self.A_size, self.B_size)
+
+def get_params(opt, size):
+    w, h = size
+    new_h = h
+    new_w = w
+    if opt.preprocess == 'resize_and_crop':
+        new_h = new_w = opt.load_size
+    elif opt.preprocess == 'scale_width_and_crop':
+        new_w = opt.load_size
+        new_h = opt.load_size * h // w
+
+    x = random.randint(0, np.maximum(0, new_w - opt.crop_size))
+    y = random.randint(0, np.maximum(0, new_h - opt.crop_size))
+
+    flip = random.random() > 0.5
+
+    return {'crop_pos': (x, y), 'flip': flip}
 
 def make_dataset(dir, max_dataset_size=float("inf")):
     images = []

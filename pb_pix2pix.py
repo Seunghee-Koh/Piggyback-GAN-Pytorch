@@ -14,6 +14,7 @@ from models.networks import PiggybackConv, PiggybackTransposeConv, load_pb_conv,
 import copy 
 import sys
 from pytorch_model_summary import summary as summary_
+# from ignite.metrics.gan import FID
 
 import pdb
 
@@ -54,16 +55,22 @@ def train(gpu, opt):
             shuffle=False,
             num_workers=0,
             pin_memory=True,
-            sampler=train_sampler)       
+            sampler=train_sampler)  
 
     for epoch in range(opt.start_epoch, opt.n_epochs + opt.n_epochs_decay + 1):
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()    # timer for data loading per iteration
         train_sampler.set_epoch(epoch)
-        print("Length of loader is ",len(train_loader))
+        if gpu<=0:
+            print("Length of loader is ",len(train_loader))
+            # opt.fid.reset()
         for i, data in enumerate(train_loader):
             model.module.set_input(data)
-            model.module.optimize_parameters() 
+            model.module.optimize_parameters()
+
+            # if (i+1) % 30 == 0 and gpu<=0:
+            #     opt.fid.update()
+
             if (i+1) % 50 == 0 and gpu<=0:
                 print_str = (
                     f"Task: {opt.task_num} | Epoch: {epoch} | Iter: {i+1} | G: {model.module.loss_G:.5f} | "
@@ -71,7 +78,6 @@ def train(gpu, opt):
                     f"D: {model.module.loss_D:.5f}"
                 )
                 print(print_str)
-
 
         model.module.update_learning_rate()  
 
@@ -81,6 +87,8 @@ def train(gpu, opt):
                         'epoch': epoch 
                     }
             torch.save(save_dict, opt.ckpt_save_path+'/latest_checkpoint.pt')
+            # opt.fid_list.append(opt.fid.compute())
+
         dist.barrier()
 
     if gpu <= 0:
@@ -145,11 +153,15 @@ def test(opt, task_idx):
 def main():
 
     opt = Pix2PixGANOptions().parse()
-    tasks = ['cityscapes', 'maps', 'facades', 'edges2handbags']
+    tasks = ['cityscapes', 'maps', 'facades']
     torch.manual_seed(0)
     np.random.seed(0)
     torch.cuda.manual_seed(0)
     torch.cuda.manual_seed_all(0)
+    if opt.taskwise_lambda and opt.layerwise_lambda:
+        raise ValueError("taskwise_lambda and layerwise lambda are exclusive.")
+    # opt.fid = FID(device=opt.gpu_ids[0])
+    # opt.fid_list = []
 
     if opt.train:
         
@@ -187,7 +199,39 @@ def main():
             opt.task_num = task_idx+1
             if tasks[task_idx] == 'edges2handbags': # in case of edges2handbags
                 opt.direction = 'AtoB'
-            # pdb.set_trace()
+
+            # define the task wise lambda value
+            opt.task_lambda = 0.25
+            if opt.taskwise_lambda:
+                if opt.train_continue:
+                    raise NotImplementedError
+                    # state_dict = torch.load(opt.ckpt_save_path + '/latest_checkpoint.pt')
+                    # opt.task_lambda = state_dict['task_lambda']
+                else:
+                    from models.lambda_calculators import get_task_lambda
+                    # task_lambdas = [0.125, 0.0625, 0.375, 0.5, 0.75, 0.375]
+                    # opt.task_lambda = task_lambdas[task_idx]
+                    # opt.task_lambda = get_task_lambda(opt, opt.gpu_ids[0], task_idx)
+                    opt_taskwise = copy.deepcopy(opt)
+                    opt_taskwise.task_num = 1
+                    load_filter_path = opt.checkpoints_dir+f"/Task_{opt_taskwise.task_num}_{tasks[opt_taskwise.task_num-1]}_pix2pixGAN/filters.pt"
+                    opt_taskwise.load_filter_path = load_filter_path
+                    filters = torch.load(opt_taskwise.load_filter_path)
+                    opt_taskwise.netG_filter_list = filters["netG_filter_list"]
+                    opt_taskwise.weights = filters["weights"]
+
+                    opt.task_lambda = get_task_lambda(opt, opt_taskwise, 0)
+                    print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
+            elif opt.layerwise_lambda:
+                if opt.train_continue:
+                    raise NotImplementedError("")
+                else:
+                    # TODO: Implement the calculation algorithm for layerwise lambda.
+                    layer_lambdas = [1.0/64 * (i+1) for i in range(16)]
+                    opt.task_lambda = layer_lambdas
+            else:
+                opt.task_lambda = 0.25
+
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))
             if opt.train_continue:
                 opt.train_continue=False # to prevent train continue multiple times
