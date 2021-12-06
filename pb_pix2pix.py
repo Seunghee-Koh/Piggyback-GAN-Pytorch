@@ -13,7 +13,7 @@ import time
 from models.networks import PiggybackConv, PiggybackTransposeConv, load_pb_conv, make_filter_list
 import copy 
 import sys
-from pytorch_model_summary import summary as summary_
+from utils.fid_score import calculate_fid_given_paths
 # from ignite.metrics.gan import FID
 
 import pdb
@@ -39,7 +39,7 @@ def train(gpu, opt):
         if opt.train_continue:
             state_dict = torch.load(opt.ckpt_save_path+'/latest_checkpoint.pt')  
             model.load_state_dict(state_dict['model'])
-            opt.start_epoch = state_dict['epoch']
+            opt.start_epoch = state_dict['epoch'] + 1
             print(f'loaded {opt.start_epoch} epoch')
 
         train_dataset = AlignedDataset(opt)
@@ -116,9 +116,8 @@ def train(gpu, opt):
 def test(opt, task_idx):
 
     opt.train = False
-    device = torch.device('cuda:{}'.format(gpu)) if gpu>=0 else torch.device('cpu')
-    model = Pix2PixModel(opt, device)
-    model = model.to(device)
+    device = torch.device('cuda:{}'.format(opt.gpu_ids[0])) if len(opt.gpu_ids)>0 else torch.device('cpu')
+    model = Pix2PixModel(opt, device).to(device)
     model.eval()
     if task_idx == 3: # if edges2handbags
         opt.direction = 'AtoB'
@@ -129,15 +128,16 @@ def test(opt, task_idx):
             shuffle=False,            
             num_workers=4,
             pin_memory=True)
-
+    print("Length of loader is ",len(test_loader))
     model.netG = load_pb_conv(model.netG, opt.netG_filter_list, opt.weights, task_idx)
+    model.to(device) # in load_pb_conv, there are cpu weights, so to(device) needed
 
     for i, data in enumerate(test_loader):
         model.set_input(data)
         model.forward()
         model.save_test_images(i)
         print(f"Task {opt.task_num} : Image {i}")
-        if i > 50:
+        if i > 100:
             break
 
     del model
@@ -148,6 +148,7 @@ def test(opt, task_idx):
                                                             50,
                                                             True,
                                                             2048)
+    print(f'fid for Task {opt.task_num} is {fid_value}')
 # %%
 
 def main():
@@ -173,6 +174,8 @@ def main():
         os.environ['MASTER_PORT'] = '8888'  
 
         for task_idx in range(start_task, end_task): 
+            if task_idx > 0:
+                break
             # Create Task folder 
             opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx]+"_"+"pix2pixGAN"
             opt.image_folder_name = "Intermediate_train_images"
@@ -246,13 +249,16 @@ def main():
         print("In Testing mode")
         start_task = 0
         end_task = len(tasks)
-        load_filter_path = opt.checkpoints_dir+f"/Task_{len(tasks)}_{tasks[-1]}_pix2pixGAN/filters.pt"
+        # load_filter_path = opt.checkpoints_dir+f"/Task_{len(tasks)}_{tasks[-1]}_pix2pixGAN/filters.pt"
+        load_filter_path = opt.checkpoints_dir+f"/Task_{1}_{tasks[0]}_pix2pixGAN/filters.pt"
+        print(f'load path: {load_filter_path}')
         opt.load_filter_path = load_filter_path
 
         filters = torch.load(opt.load_filter_path)
         opt.netG_filter_list = filters["netG_filter_list"]
         opt.weights = filters["weights"]
         opt.image_folder_name = "Test_images"
+        opt.task_lambda = 0.25
 
         for task_idx in range(start_task, end_task):
             print(f"Task {task_idx+1}")

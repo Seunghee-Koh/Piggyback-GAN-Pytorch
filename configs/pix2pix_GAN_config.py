@@ -10,8 +10,8 @@ class Pix2PixGANOptions():
         parser.add_argument('--checkpoints_dir', type=str, default = "./checkpoints")
 
         # device settings
-        parser.add_argument('--train', required=True, type=bool)
-        parser.add_argument('--train_continue', type=bool, default=False)
+        parser.add_argument('--train', action='store_true')
+        parser.add_argument('--train_continue', action='store_true')
         parser.add_argument('--nodes', type=int, default=1)
         parser.add_argument('--gpu_ids', type=str, default='4,5', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         parser.add_argument('--nr', type=int, default=0, help='ranking within nodes')
