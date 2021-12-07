@@ -17,7 +17,35 @@ from utils.fid_score import calculate_fid_given_paths
 # from ignite.metrics.gan import FID
 
 import pdb
+def consume_prefix_in_state_dict_if_present(state_dict, prefix):
+    """Strip the prefix in state_dict in place, if any.
+    ..note::
+        Given a `state_dict` from a DP/DDP model, a local model can load it by applying
+        `consume_prefix_in_state_dict_if_present(state_dict, "module.")` before calling
+        :meth:`torch.nn.Module.load_state_dict`.
+    Args:
+        state_dict (OrderedDict): a state-dict to be loaded to the model.
+        prefix (str): prefix.
+    """
+    keys = sorted(state_dict.keys())
+    for key in keys:
+        if key.startswith(prefix):
+            newkey = key[len(prefix) :]
+            state_dict[newkey] = state_dict.pop(key)
 
+    # also strip the prefix in metadata if any.
+    if "_metadata" in state_dict:
+        metadata = state_dict["_metadata"]
+        for key in list(metadata.keys()):
+            # for the metadata dict, the key can be:
+            # '': for the DDP module, which we want to remove.
+            # 'module': for the actual model.
+            # 'module.xx.xx': for the rest.
+
+            if len(key) == 0:
+                continue
+            newkey = key[len(prefix) :]
+            metadata[newkey] = metadata.pop(key)
 # %%
 def train(gpu, opt):
 
@@ -40,7 +68,7 @@ def train(gpu, opt):
             state_dict = torch.load(opt.ckpt_save_path+'/latest_checkpoint.pt')  
             model.load_state_dict(state_dict['model'])
             opt.start_epoch = state_dict['epoch'] + 1
-            print(f'loaded {opt.start_epoch} epoch')
+            print(f'loaded {opt.start_epoch-1} epoch')
 
         train_dataset = AlignedDataset(opt)
         train_sampler = torch.utils.data.distributed.DistributedSampler(
@@ -79,7 +107,7 @@ def train(gpu, opt):
                 )
                 print(print_str)
 
-        model.module.update_learning_rate()  
+        model.module.update_learning_rate()
 
         if gpu<=0:
             model.module.save_train_images(epoch)
@@ -117,10 +145,8 @@ def test(opt, task_idx):
 
     opt.train = False
     device = torch.device('cuda:{}'.format(opt.gpu_ids[0])) if len(opt.gpu_ids)>0 else torch.device('cpu')
-    model = Pix2PixModel(opt, device).to(device)
-    model.eval()
-    if task_idx == 3: # if edges2handbags
-        opt.direction = 'AtoB'
+    # model = Pix2PixModel(opt, device).to(device)
+    # model.eval()
     test_dataset = AlignedDataset(opt)
     test_loader = torch.utils.data.DataLoader(
             dataset=test_dataset,
@@ -129,12 +155,36 @@ def test(opt, task_idx):
             num_workers=4,
             pin_memory=True)
     print("Length of loader is ",len(test_loader))
-    model.netG = load_pb_conv(model.netG, opt.netG_filter_list, opt.weights, task_idx)
+
+    # model.netG = load_pb_conv(model.netG, opt.netG_filter_list, opt.weights, task_idx)
+    model = Pix2PixModel(opt, device).to(device)
+    model.eval()
+
+    tasks = ['cityscapes', 'maps', 'facades']
+    ckpt_path = opt.checkpoints_dir+f"/Task_{task_idx+1}_{tasks[task_idx]}_pix2pixGAN/latest_checkpoint.pt"
+    state_dict = torch.load(ckpt_path)
+    consume_prefix_in_state_dict_if_present(state_dict['model'], 'module.')
+    # for idx, m in enumerate(model.netG.modules()):
+    #     if idx>=3:
+    #         print(idx, m)        
+    #         pdb.set_trace()
+    model.load_state_dict(state_dict['model'])
+    print('state dict loaded')
+
     model.to(device) # in load_pb_conv, there are cpu weights, so to(device) needed
 
     for i, data in enumerate(test_loader):
         model.set_input(data)
         model.forward()
+
+        # from torchvision.utils import save_image
+        # save_image(model.fake_B*0.5+0.5, './test_fake_B.png')
+        # model2.set_input(data)
+        # model2.forward()
+        # save_image(model2.fake_B*0.5+0.5, './test_fake_B2.png')        
+        # f = []
+        # make_filter_list(model2.module.netG, f, [], opt.task_num)
+
         model.save_test_images(i)
         print(f"Task {opt.task_num} : Image {i}")
         if i > 100:
@@ -174,8 +224,6 @@ def main():
         os.environ['MASTER_PORT'] = '8888'  
 
         for task_idx in range(start_task, end_task): 
-            if task_idx > 0:
-                break
             # Create Task folder 
             opt.task_folder_name = "Task_"+str(task_idx+1)+"_"+tasks[task_idx]+"_"+"pix2pixGAN"
             opt.image_folder_name = "Intermediate_train_images"
@@ -204,7 +252,8 @@ def main():
                 opt.direction = 'AtoB'
 
             # define the task wise lambda value
-            opt.task_lambda = 0.25
+            opt.task_lambda = [0.25]*15
+            opt.task_lambda.append(1.) # last layer is all unconstrained, this is harded coded to Unet256 architecture
             if opt.taskwise_lambda:
                 if opt.train_continue:
                     raise NotImplementedError
@@ -247,10 +296,10 @@ def main():
         which will contain everything we need. 
         '''
         print("In Testing mode")
-        start_task = 0
+        start_task = opt.st_task_idx
         end_task = len(tasks)
-        # load_filter_path = opt.checkpoints_dir+f"/Task_{len(tasks)}_{tasks[-1]}_pix2pixGAN/filters.pt"
-        load_filter_path = opt.checkpoints_dir+f"/Task_{1}_{tasks[0]}_pix2pixGAN/filters.pt"
+        load_filter_path = opt.checkpoints_dir+f"/Task_{len(tasks)}_{tasks[-1]}_pix2pixGAN/filters.pt"
+        # load_filter_path = opt.checkpoints_dir+f"/Task_{1}_{tasks[0]}_pix2pixGAN/filters.pt"
         print(f'load path: {load_filter_path}')
         opt.load_filter_path = load_filter_path
 
@@ -258,7 +307,8 @@ def main():
         opt.netG_filter_list = filters["netG_filter_list"]
         opt.weights = filters["weights"]
         opt.image_folder_name = "Test_images"
-        opt.task_lambda = 0.25
+        opt.task_lambda = [0.25]*15
+        opt.task_lambda.append(1.)
 
         for task_idx in range(start_task, end_task):
             print(f"Task {task_idx+1}")

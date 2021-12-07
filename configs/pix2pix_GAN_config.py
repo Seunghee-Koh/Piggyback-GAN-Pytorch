@@ -22,7 +22,7 @@ class Pix2PixGANOptions():
         parser.add_argument('--ndf', type=int, default=64)
         parser.add_argument('--netD', type=str, default='basic', help='[basic | n_layers | pixel]')
         parser.add_argument('--netG', type=str, default='unet_256', help='[resnet_9blocks | resnet_6blocks | unet_256 | unet_128]')
-        parser.add_argument('--norm', type=str, default='batch', help='[instance | batch | none]')
+        parser.add_argument('--norm', type=str, default='instance', help='[instance | batch | none]')
         parser.add_argument('--init_type', type=str, default='normal')
         parser.add_argument('--init_gain', type=float, default=0.02)
         parser.add_argument('--dropout', type=bool, default=False)

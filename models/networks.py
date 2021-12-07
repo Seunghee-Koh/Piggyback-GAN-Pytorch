@@ -154,7 +154,8 @@ class PiggybackConv(nn.Module):
             
             self.unc_filt = nn.Parameter(torch.Tensor(self.lamb_num, self.in_channels, self.kernel_size[0], self.kernel_size[1])) 
             #self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
-            self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=0))
+            # self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=0))
+            self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list[:self.task_num-1], dim=0))
             bank_c_out = self.concat_unc_filter.shape[0]
             self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
 
@@ -197,7 +198,8 @@ class PiggybackTransposeConv(nn.Module):
         else: 
             self.unc_filt = nn.Parameter(torch.Tensor(self.in_channels, self.lamb_num, self.kernel_size[0], self.kernel_size[1])) 
             #self.weights_mat = nn.Parameter(torch.Tensor((self.out_channels + (self.task_num-2)*self.lamb_num), self.lamb_rem_num))
-            self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=1))
+            # self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list, dim=1))
+            self.register_buffer('concat_unc_filter', torch.cat(unc_filt_list[:self.task_num-1], dim=1))
             # bank_c_out
             bank_c_out = self.concat_unc_filter.shape[1]
             self.weights_mat = nn.Parameter(torch.Tensor(bank_c_out, self.lamb_rem_num))
@@ -397,9 +399,9 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
 
     else:
         #new_net = convert_piggy_layer(net, task_num, filt_list, lambdas)
-        new_net = lambda_calculators.convert_piggy_layer_layerwise_lambda(net, task_num, filt_list, lambdas)
-    new_net = net
-
+        # new_net = lambda_calculators.convert_piggy_layer_layerwise_lambda(net, task_num, filt_list, lambdas)
+        new_net = convert_piggy_layer(net, task_num, filt_list)
+    # new_net = net
     
     init_weights(new_net, init_type, init_gain=init_gain)
 
