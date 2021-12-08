@@ -74,7 +74,7 @@ class Pix2PixModel(nn.Module):
 
     def save_test_images(self, idx):
         save_image(tensor2im(self.real_A), self.opt.img_save_path + f"/img_{idx:04d}_real_A.png")
-        save_image(tensor2im(self.fake_B), self.opt.img_save_path + f"/img_{idx:04d}_trans_A2B.png")
+        save_image(tensor2im(self.fake_B), self.opt.img_save_path + f"/img_{idx:04d}_fake_B.png")
         save_image(tensor2im(self.real_B), self.opt.img_save_path + f"/img_{idx:04d}_real_B.png")
 
         # save image gird

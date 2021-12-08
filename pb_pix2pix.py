@@ -14,6 +14,7 @@ from models.networks import PiggybackConv, PiggybackTransposeConv, load_pb_conv,
 import copy 
 import sys
 from utils.fid_score import calculate_fid_given_paths
+from utils.calc_layer_lambda import calc_layer_lambda
 # from ignite.metrics.gan import FID
 
 import pdb
@@ -189,7 +190,7 @@ def test(opt, task_idx):
 
         model.save_test_images(i)
         print(f"Task {opt.task_num} : Image {i}")
-        if i > 100:
+        if i >= 100:
             break
 
     del model
@@ -282,8 +283,7 @@ def main():
                 if opt.train_continue:
                     raise NotImplementedError("")
                 else:
-                    # TODO: Implement the calculation algorithm for layerwise lambda.
-                    layer_lambdas = [1.0/64 * (i+1) for i in range(16)]
+                    layer_lambdas = calc_layer_lambda("exponential") # use exponential layer_lambda
                     opt.task_lambda = layer_lambdas
 
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))
@@ -309,8 +309,6 @@ def main():
         opt.netG_filter_list = filters["netG_filter_list"]
         opt.weights = filters["weights"]
         opt.image_folder_name = "Test_images"
-        opt.task_lambda = [0.25]*15
-        opt.task_lambda.append(1.)
 
         for task_idx in range(start_task, end_task):
             print(f"Task {task_idx+1}")
@@ -323,6 +321,33 @@ def main():
             opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
             opt.task_num = task_idx+1
 
+            if opt.taskwise_lambda and opt.task_num > 1:
+                from models.lambda_calculators import get_task_lambda
+                # task_lambdas = [0.125, 0.0625, 0.375, 0.5, 0.75, 0.375]
+                # opt.task_lambda = task_lambdas[task_idx]
+                # opt.task_lambda = get_task_lambda(opt, opt.gpu_ids[0], task_idx)
+                opt_taskwise = copy.deepcopy(opt)
+                opt_taskwise.task_num = 1
+                load_filter_path = opt.checkpoints_dir+f"/Task_{opt_taskwise.task_num}_{tasks[opt_taskwise.task_num-1]}_pix2pixGAN/filters.pt"
+                opt_taskwise.load_filter_path = load_filter_path
+                filters = torch.load(opt_taskwise.load_filter_path)
+                opt_taskwise.netG_filter_list = filters["netG_filter_list"]
+                opt_taskwise.weights = filters["weights"]
+                # TODO: Error prone.
+                # opt_taskwise.task_lambda= filters["task_lambda"]
+
+                opt.task_lambda = get_task_lambda(opt, opt_taskwise, 0)
+                print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
+            elif opt.layerwise_lambda:
+                if opt.train_continue:
+                    raise NotImplementedError("")
+                else:
+                    layer_lambdas = calc_layer_lambda("exponential") # use exponential layer_lambda
+                    opt.task_lambda = layer_lambdas
+            else:
+                opt.task_lambda = [0.25]*15
+                opt.task_lambda.append(1.)
+                
             test(opt, task_idx)
 
 if __name__ == "__main__":
