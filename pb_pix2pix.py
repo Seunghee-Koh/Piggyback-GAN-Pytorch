@@ -251,10 +251,7 @@ def main():
             if tasks[task_idx] == 'edges2handbags': # in case of edges2handbags
                 opt.direction = 'AtoB'
 
-            # define the task wise lambda value
-            opt.task_lambda = [0.25]*15
-            opt.task_lambda.append(1.) # last layer is all unconstrained, this is harded coded to Unet256 architecture
-            if opt.taskwise_lambda:
+            if opt.taskwise_lambda and opt.task_num > 1:
                 if opt.train_continue:
                     raise NotImplementedError
                     # state_dict = torch.load(opt.ckpt_save_path + '/latest_checkpoint.pt')
@@ -282,7 +279,9 @@ def main():
                     layer_lambdas = [1.0/64 * (i+1) for i in range(16)]
                     opt.task_lambda = layer_lambdas
             else:
-                opt.task_lambda = 0.25
+                # define the task wise lambda value
+                opt.task_lambda = [0.25]*15
+                opt.task_lambda.append(1.) # last layer is all unconstrained, this is harded coded to Unet256 architecture
 
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))
             if opt.train_continue:

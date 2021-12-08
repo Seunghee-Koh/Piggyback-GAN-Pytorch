@@ -8,6 +8,39 @@ from torch.nn.functional import l1_loss
 # 'lambdas' indicates lambdas in PiggybackConv, and PiggybackTransposeConv.
 # Lambdas are applied in convert_piggy_layer function in models.networks.define_G
 
+
+def consume_prefix_in_state_dict_if_present(state_dict, prefix):
+    """Strip the prefix in state_dict in place, if any.
+    ..note::
+        Given a `state_dict` from a DP/DDP model, a local model can load it by applying
+        `consume_prefix_in_state_dict_if_present(state_dict, "module.")` before calling
+        :meth:`torch.nn.Module.load_state_dict`.
+    Args:
+        state_dict (OrderedDict): a state-dict to be loaded to the model.
+        prefix (str): prefix.
+    """
+    keys = sorted(state_dict.keys())
+    for key in keys:
+        if key.startswith(prefix):
+            newkey = key[len(prefix) :]
+            state_dict[newkey] = state_dict.pop(key)
+
+    # also strip the prefix in metadata if any.
+    if "_metadata" in state_dict:
+        metadata = state_dict["_metadata"]
+        for key in list(metadata.keys()):
+            # for the metadata dict, the key can be:
+            # '': for the DDP module, which we want to remove.
+            # 'module': for the actual model.
+            # 'module.xx.xx': for the rest.
+
+            if len(key) == 0:
+                continue
+            newkey = key[len(prefix) :]
+            metadata[newkey] = metadata.pop(key)
+
+
+
 # TODO: Please copy calculated_lambda before converting as filter_list.
 def convert_piggy_layer_layerwise_lambda(module, task_num, filter_list, calculated_lambda):
     module_output = module
@@ -62,8 +95,14 @@ def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0):
     opt.train=True # To call train dataset 
     device = torch.device('cuda:{}'.format(gpu)) if gpu>=0 else torch.device('cpu')
     model = pix2pix_model.Pix2PixModel(opt_task_lambda, device)
-    model.netG = networks.load_pb_conv(model.netG, opt_task_lambda.netG_filter_list, opt_task_lambda.weights, opt_task_lambda.task_num-1)
+    # model.netG = networks.load_pb_conv(model.netG, opt_task_lambda.netG_filter_list, opt_task_lambda.weights, opt_task_lambda.task_num-1)
+    tasks = ['cityscapes', 'maps', 'facades']
+    ckpt_path = opt.checkpoints_dir+f"/Task_{opt_task_lambda.task_num}_{tasks[opt_task_lambda.task_num-1]}_pix2pixGAN/latest_checkpoint.pt"
+    state_dict = torch.load(ckpt_path)
+    consume_prefix_in_state_dict_if_present(state_dict['model'], 'module.')
+    model.load_state_dict(state_dict['model'])
     model = model.to(device)
+
     model.eval()
     # Lambda should be calculated using trainset!
     train_dataset = AlignedDataset(opt)
