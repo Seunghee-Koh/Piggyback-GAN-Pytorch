@@ -112,7 +112,8 @@ def train(gpu, opt):
         if gpu<=0:
             model.module.save_train_images(epoch)
             save_dict = {'model': model.state_dict(),
-                        'epoch': epoch 
+                        'epoch': epoch,
+                        'lambda':opt.task_lambda
                     }
             torch.save(save_dict, opt.ckpt_save_path+'/latest_checkpoint.pt')
             # opt.fid_list.append(opt.fid.compute())
@@ -124,7 +125,8 @@ def train(gpu, opt):
         make_filter_list(model.module.netG, opt.netG_filter_list, opt.weights, opt.task_num)
 
         savedict_task = {'netG_filter_list':opt.netG_filter_list,
-                            'weights':opt.weights
+                            'weights':opt.weights,
+                            'lambda':opt.task_lambda
                         }
         torch.save(savedict_task, opt.ckpt_save_path+'/filters.pt')
         print(f'dict saved')
@@ -161,6 +163,7 @@ def test(opt, task_idx):
     model.eval()
 
     tasks = ['cityscapes', 'maps', 'facades']
+
     ckpt_path = opt.checkpoints_dir+f"/Task_{task_idx+1}_{tasks[task_idx]}_pix2pixGAN/latest_checkpoint.pt"
     state_dict = torch.load(ckpt_path)
     consume_prefix_in_state_dict_if_present(state_dict['model'], 'module.')
@@ -172,7 +175,6 @@ def test(opt, task_idx):
     print('state dict loaded')
 
     model.to(device) # in load_pb_conv, there are cpu weights, so to(device) needed
-
     for i, data in enumerate(test_loader):
         model.set_input(data)
         model.forward()
@@ -251,6 +253,9 @@ def main():
             if tasks[task_idx] == 'edges2handbags': # in case of edges2handbags
                 opt.direction = 'AtoB'
 
+            opt.task_lambda = [0.25]*15
+            opt.task_lambda.append(1.) # last layer is all unconstrained, this is harded coded to Unet256 architecture
+
             if opt.taskwise_lambda and opt.task_num > 1:
                 if opt.train_continue:
                     raise NotImplementedError
@@ -268,6 +273,8 @@ def main():
                     filters = torch.load(opt_taskwise.load_filter_path)
                     opt_taskwise.netG_filter_list = filters["netG_filter_list"]
                     opt_taskwise.weights = filters["weights"]
+                    # TODO: Error prone.
+                    # opt_taskwise.task_lambda= filters["task_lambda"]
 
                     opt.task_lambda = get_task_lambda(opt, opt_taskwise, 0)
                     print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
@@ -278,10 +285,6 @@ def main():
                     # TODO: Implement the calculation algorithm for layerwise lambda.
                     layer_lambdas = [1.0/64 * (i+1) for i in range(16)]
                     opt.task_lambda = layer_lambdas
-            else:
-                # define the task wise lambda value
-                opt.task_lambda = [0.25]*15
-                opt.task_lambda.append(1.) # last layer is all unconstrained, this is harded coded to Unet256 architecture
 
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))
             if opt.train_continue:

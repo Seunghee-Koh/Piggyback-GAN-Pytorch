@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from models import networks, cycleGAN
-from dataloaders.dataloader import UnalignedDataset
+from models import networks, cycleGAN, pix2pix_model
+from dataloaders.dataloader import UnalignedDataset, AlignedDataset
 from torch.nn.functional import l1_loss
 
 # TODO: Enable two types of lambda : list(different by layer), float(constant for all filters)
@@ -98,6 +98,7 @@ def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0):
     # model.netG = networks.load_pb_conv(model.netG, opt_task_lambda.netG_filter_list, opt_task_lambda.weights, opt_task_lambda.task_num-1)
     tasks = ['cityscapes', 'maps', 'facades']
     ckpt_path = opt.checkpoints_dir+f"/Task_{opt_task_lambda.task_num}_{tasks[opt_task_lambda.task_num-1]}_pix2pixGAN/latest_checkpoint.pt"
+    print(f"Load {ckpt_path} to infer the taskwise lambda.")
     state_dict = torch.load(ckpt_path)
     consume_prefix_in_state_dict_if_present(state_dict['model'], 'module.')
     model.load_state_dict(state_dict['model'])
@@ -119,7 +120,7 @@ def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0):
             model.set_input(data)
             model.forward()
             # Distance measure.. Cycleloss..
-            loss = l1_loss(model.rec_A, model.real_A)
+            loss = l1_loss(model.fake_B, model.real_B)/2
             total_loss = total_loss + loss.item()
             cnt = cnt + 1
             # if not i%20:
@@ -128,8 +129,4 @@ def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0):
     avg_loss = total_loss / cnt
     lambdas = round(avg_loss *opt.ngf) * 1.0 / opt.ngf
     return min(lambdas, max_lambda)
-
-
-        
-
 
