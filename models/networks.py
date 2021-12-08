@@ -399,8 +399,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='instance', use_dropout=False,
 
     else:
         #new_net = convert_piggy_layer(net, task_num, filt_list, lambdas)
-        # new_net = lambda_calculators.convert_piggy_layer_layerwise_lambda(net, task_num, filt_list, lambdas)
-        new_net = convert_piggy_layer(net, task_num, filt_list)
+        new_net = lambda_calculators.convert_piggy_layer_layerwise_lambda(net, task_num, filt_list, lambdas)
+        # new_net = convert_piggy_layer(net, task_num, filt_list)
     # new_net = net
     
     init_weights(new_net, init_type, init_gain=init_gain)
