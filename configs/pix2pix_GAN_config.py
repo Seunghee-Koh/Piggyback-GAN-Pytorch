@@ -57,6 +57,8 @@ class Pix2PixGANOptions():
 
         parser.add_argument('-taskwise_lambda', action='store_true')
         parser.add_argument('-layerwise_lambda', action='store_true')
+        parser.add_argument('--constant_lambda', type=float, default=0.25)
+        parser.add_argument('--port', type=int, default=8888)
 
         return parser
 

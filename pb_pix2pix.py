@@ -198,7 +198,8 @@ def test(opt, task_idx):
         # make_filter_list(model2.module.netG, f, [], opt.task_num)
 
         model.save_test_images(i)
-        print(f"Task {opt.task_num} : Image {i}")
+        if not i % 10:
+            print(f"Task {opt.task_num} : Image {i}")
         if i >= 100:
             break
 
@@ -233,7 +234,7 @@ def main():
 
         opt.world_size = len(opt.gpu_ids) * opt.nodes                
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '8888'  
+        os.environ['MASTER_PORT'] = f'{opt.port}'
 
         for task_idx in range(start_task, end_task): 
             # Create Task folder 
@@ -263,7 +264,7 @@ def main():
             if tasks[task_idx] == 'edges2handbags': # in case of edges2handbags
                 opt.direction = 'AtoB'
 
-            opt.task_lambda = [0.25]*15
+            opt.task_lambda = [opt.constant_lambda]*15
             opt.task_lambda.append(1.) # last layer is all unconstrained, this is harded coded to Unet256 architecture
 
             if opt.taskwise_lambda and opt.task_num > 1:
@@ -296,6 +297,8 @@ def main():
                     layer_lambdas = calc_layer_lambda("exponential") # use exponential layer_lambda
                     opt.task_lambda = layer_lambdas
 
+            
+            print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
             mp.spawn(train, nprocs=len(opt.gpu_ids), args=(opt,))
             if opt.train_continue:
                 opt.train_continue=False # to prevent train continue multiple times
