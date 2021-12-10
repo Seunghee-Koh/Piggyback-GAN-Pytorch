@@ -63,6 +63,15 @@ def train(gpu, opt):
         # model = CycleGAN(opt, device)
         model = Pix2PixModel(opt, device)
         model = model.to(device)
+        #from models.networks import PiggybackConv, PiggybackTransposeConv
+        #for layer in model.modules():
+        #    if isinstance(layer, PiggybackConv) or isinstance(layer, PiggybackTransposeConv):
+        #        print(layer)
+        #        print(layer.unc_filt.shape, layer.task_num)
+        #        if layer.task_num > 1:
+        #            print(layer.concat_unc_filter.shape)
+        #            print(layer.weights_mat.shape)
+
  
         model = nn.parallel.DistributedDataParallel(model, device_ids=[rank], output_device=rank)
         if opt.train_continue:
@@ -274,10 +283,11 @@ def main():
                     filters = torch.load(opt_taskwise.load_filter_path)
                     opt_taskwise.netG_filter_list = filters["netG_filter_list"]
                     opt_taskwise.weights = filters["weights"]
-                    # TODO: Error prone.
-                    # opt_taskwise.task_lambda= filters["task_lambda"]
+                    opt_taskwise.task_lambda= filters["lambda"]
 
-                    opt.task_lambda = get_task_lambda(opt, opt_taskwise, 0)
+                    new_lambda = get_task_lambda(opt, opt_taskwise, 0)
+                    opt.task_lambda = [new_lambda for _ in range(15)]
+                    opt.task_lambda.append(1.)
                     print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
             elif opt.layerwise_lambda:
                 if opt.train_continue:
@@ -321,22 +331,10 @@ def main():
             opt.dataroot = '../pytorch-CycleGAN-and-pix2pix/datasets/' + tasks[task_idx]
             opt.task_num = task_idx+1
 
-            if opt.taskwise_lambda and opt.task_num > 1:
-                from models.lambda_calculators import get_task_lambda
-                # task_lambdas = [0.125, 0.0625, 0.375, 0.5, 0.75, 0.375]
-                # opt.task_lambda = task_lambdas[task_idx]
-                # opt.task_lambda = get_task_lambda(opt, opt.gpu_ids[0], task_idx)
-                opt_taskwise = copy.deepcopy(opt)
-                opt_taskwise.task_num = 1
-                load_filter_path = opt.checkpoints_dir+f"/Task_{opt_taskwise.task_num}_{tasks[opt_taskwise.task_num-1]}_pix2pixGAN/filters.pt"
-                opt_taskwise.load_filter_path = load_filter_path
-                filters = torch.load(opt_taskwise.load_filter_path)
-                opt_taskwise.netG_filter_list = filters["netG_filter_list"]
-                opt_taskwise.weights = filters["weights"]
-                # TODO: Error prone.
-                # opt_taskwise.task_lambda= filters["task_lambda"]
+            if opt.taskwise_lambda:
+                load_filter_path = opt.checkpoints_dir+f"/Task_{opt.task_num}_{tasks[opt.task_num-1]}_pix2pixGAN/filters.pt"
+                opt.task_lambda= torch.load(load_filter_path)["lambda"]
 
-                opt.task_lambda = get_task_lambda(opt, opt_taskwise, 0)
                 print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
             elif opt.layerwise_lambda:
                 if opt.train_continue:
