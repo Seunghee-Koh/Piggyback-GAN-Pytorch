@@ -1,3 +1,14 @@
+# Dynamic Piggyback GAN by Pytorch.
+
+본 repository는 Piggyback GAN Pytorch를 clone하여 2021 fall [AI502] Deep learning 과목의 term project를 진행하기 위한 실험 코드를 정리한 것입니다.
+
+기존 Piggyback GAN source code에서 수정한 사항은 아래와 같습니다.
+
+1. Piggyback GAN을 reproduce하는 과정에서 define된 generator를 nn.conv, nn.transposeconv를 각각에 대응되는 piggyback layer로 치환하는 과정에서 생기는 버그 수정.
+2. CycleGAN을 사용한 unpaired image-to-image translation task에서 Pix2Pix 모델을 사용한 paired image-to-image translation task로 수정.
+3. Dynamic lambda 구현을 위해 lambda를 task, layer마다 변경 가능하도록 수정.
+
+
 # Piggyback GAN Pytorch
 
 [Piggyback GAN](https://www.sfu.ca/~mnawhal/projects/zhai_eccv20.pdf) is a framework for lifelong learning in generative models. Specifically, it considers the problem of image-to-image translation using the CycleGAN and Pix2Pix framework. The goal (as with any lifelong learning framework) is to be able to learn as many tasks as possible, with minimal increase in no. of parameters. 
