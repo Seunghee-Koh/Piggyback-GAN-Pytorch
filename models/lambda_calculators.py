@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from models import networks, cycleGAN, pix2pix_model
 from dataloaders.dataloader import UnalignedDataset, AlignedDataset
-from torch.nn.functional import l1_loss
-
+from torch.nn.functional import l1_loss, cosine_similarity
+from torchvision.utils import save_image
 # TODO: Enable two types of lambda : list(different by layer), float(constant for all filters)
 # 'lambdas' indicates lambdas in PiggybackConv, and PiggybackTransposeConv.
 # Lambdas are applied in convert_piggy_layer function in models.networks.define_G
@@ -89,16 +89,17 @@ def convert_piggy_layer_layerwise_lambda(module, task_num, filter_list, calculat
 # lambda is calculated before mp.spawn.
 # After opt.netG_*_filter_list initialized.
 # No need to calculate lambda if there is latest_checkpoint.pt 
-def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0):
+def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0, sav_output_dir='./taskw_lambda_out'):
     assert opt.train_continue == False
     # TODO: opt.train? True? False?
+    loss_kind = opt.taskwise_loss
     opt.train=True # To call train dataset 
     device = torch.device('cuda:{}'.format(gpu)) if gpu>=0 else torch.device('cpu')
     model = pix2pix_model.Pix2PixModel(opt_task_lambda, device)
     # model.netG = networks.load_pb_conv(model.netG, opt_task_lambda.netG_filter_list, opt_task_lambda.weights, opt_task_lambda.task_num-1)
     tasks = ['cityscapes', 'maps', 'facades']
     ckpt_path = opt.checkpoints_dir+f"/Task_{opt_task_lambda.task_num}_{tasks[opt_task_lambda.task_num-1]}_pix2pixGAN/latest_checkpoint.pt"
-    print(f"Load {ckpt_path} to infer the taskwise lambda.")
+    print(f"Load {ckpt_path} to infer the taskwise lambda with {loss_kind}.")
     state_dict = torch.load(ckpt_path)
     consume_prefix_in_state_dict_if_present(state_dict['model'], 'module.')
     model.load_state_dict(state_dict['model'])
@@ -119,12 +120,25 @@ def get_task_lambda(opt, opt_task_lambda, gpu, max_lambda=1.0):
         for i, data in enumerate(train_loader):
             model.set_input(data)
             model.forward()
+            if i<10:
+                save_image(model.real_A*0.5+0.5, f'./{sav_output_dir}/Task_{opt.task_num}_real_A{i}.png')
+                save_image(model.real_B*0.5+0.5, f'./{sav_output_dir}/Task_{opt.task_num}_real_B{i}.png')
+                save_image(model.fake_B*0.5+0.5, f'./{sav_output_dir}/Task_{opt.task_num}_fake_B{i}.png')
             # Distance measure.. Cycleloss..
-            loss = l1_loss(model.fake_B, model.real_B)/2
+            if loss_kind == 'l1loss':
+                loss = l1_loss(model.fake_B, model.real_B)/2
+            elif loss_kind == 'cos':
+                #loss = cosine_similarity(model.fake_B.view(opt.batch_size, -1),
+                #                         model.real_B.view(opt.batch_size, -1))
+                loss = cosine_similarity(model.fake_B.view(opt.batch_size*3, -1),
+                                         model.real_B.view(opt.batch_size*3, -1))
+                loss = loss.abs().mean()
             total_loss = total_loss + loss.item()
             cnt = cnt + 1
-            # if not i%20:
-            #     print(i, total_loss/cnt)
+            if not i%20:
+                print(i, total_loss/cnt)
+            if i > 500:
+                break
 
     avg_loss = total_loss / cnt
     lambdas = round(avg_loss *opt.ngf) * 1.0 / opt.ngf

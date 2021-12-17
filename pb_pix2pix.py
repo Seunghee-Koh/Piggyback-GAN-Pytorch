@@ -155,6 +155,8 @@ def train(gpu, opt):
         
 def test(opt, task_idx):
 
+    opt.load_size = opt.crop_size
+    opt.no_filp = True
     opt.train = False
     device = torch.device('cuda:{}'.format(opt.gpu_ids[0])) if len(opt.gpu_ids)>0 else torch.device('cpu')
     # model = Pix2PixModel(opt, device).to(device)
@@ -198,10 +200,6 @@ def test(opt, task_idx):
         # make_filter_list(model2.module.netG, f, [], opt.task_num)
 
         model.save_test_images(i)
-        if not i % 10:
-            print(f"Task {opt.task_num} : Image {i}")
-        if i >= 100:
-            break
 
     del model
     image_path_list = opt.img_save_path
@@ -285,8 +283,9 @@ def main():
                     opt_taskwise.netG_filter_list = filters["netG_filter_list"]
                     opt_taskwise.weights = filters["weights"]
                     opt_taskwise.task_lambda= filters["lambda"]
-
-                    new_lambda = get_task_lambda(opt, opt_taskwise, 0)
+                    result_save_dict = opt.checkpoints_dir + f"/Task_{opt.task_num}_{opt_taskwise.task_num}_calculate_lambda"
+                    os.makedirs(result_save_dict, exist_ok=True)
+                    new_lambda = get_task_lambda(opt, opt_taskwise, 0, sav_output_dir=result_save_dict)
                     opt.task_lambda = [new_lambda for _ in range(15)]
                     opt.task_lambda.append(1.)
                     print(f"Task{opt.task_num}: lambda {opt.task_lambda}")
@@ -346,7 +345,7 @@ def main():
                     layer_lambdas = calc_layer_lambda("exponential") # use exponential layer_lambda
                     opt.task_lambda = layer_lambdas
             else:
-                opt.task_lambda = [0.25]*15
+                opt.task_lambda = [opt.constant_lambda]*15
                 opt.task_lambda.append(1.)
                 
             test(opt, task_idx)
